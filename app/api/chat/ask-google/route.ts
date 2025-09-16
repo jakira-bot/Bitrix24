@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/auth";
 import { rateLimit } from "@/lib/redis";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
@@ -12,14 +13,9 @@ export async function POST(req: NextRequest) {
     return new Response("Unauthorized", { status: 401 });
   }
 
-  const ip =
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
 
-  const { ok, remaining, reset } = await rateLimit(
-    `api:chat-post:${ip}`,
-    10,      // 10 requests
-    60_000   // per 60 seconds
-  );
+  const { ok, remaining, reset } = await rateLimit(`api:chat-post:${ip}`, 10, 60_000);
 
   if (!ok) {
     return new Response("Too many requests", {
@@ -52,7 +48,7 @@ export async function POST(req: NextRequest) {
     return new Response("Missing Google API key", { status: 500 });
   }
 
-  // Fetch prior messages
+  // --- Fetch prior messages from DB
   let previousMessages: { author: string; content: string }[] = [];
 
   if (conversationId) {
@@ -75,99 +71,79 @@ export async function POST(req: NextRequest) {
     { author: "user", content: userMessage },
   ];
 
-  // Call Gemini API
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: promptMessages.map((msg) => ({
-          role: msg.author === "assistant" ? "model" : "user",
-          parts: [{ text: msg.content }],
-        })),
-      }),
-    }
-  );
+  // --- Set up SDK and stream
+  const genAI = new GoogleGenerativeAI(API_KEY);
+  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-  const raw = await response.text();
-
-  let data;
-  try {
-    data = JSON.parse(raw);
-  } catch (err) {
-    console.error("❌ Invalid JSON from Gemini:", err);
-    return new Response("Invalid response from Google AI", { status: 500 });
-  }
-
-  const aiReply = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-  if (!aiReply) {
-    return new Response("No valid AI response", { status: 500 });
-  }
-
-  // Save messages in the DB in parallel (non-blocking)
-  const now = new Date();
-  const aiMessageData = {
-    role: "assistant",
-    content: aiReply,
-    createdAt: new Date(now.getTime() + 1),
-  };
-
-  const userMessageData = {
-    role: "user",
-    content: userMessage,
-    createdAt: now,
-  };
-
-  (async () => {
-    try {
-      if (!conversationId) {
-        await prisma.chatConversation.create({
-          data: {
-            userId: user.id,
-            title: "New Chat",
-            messages: {
-              create: [userMessageData, aiMessageData],
-            },
-          },
-        });
-      } else {
-        await prisma.chatConversation.update({
-          where: { id: conversationId },
-          data: {
-            messages: {
-              create: [userMessageData, aiMessageData],
-            },
-          },
-        });
-      }
-    } catch (err) {
-      console.error("❌ Failed to save messages to DB:", err);
-    }
-  })();
-
-  // ✅ Simulate streaming the text word-by-word
   const encoder = new TextEncoder();
-  const stream = new ReadableStream({
-    start(controller) {
-      const words = aiReply.split(" ");
-      let i = 0;
 
-      function pushWord() {
-        if (i >= words.length) {
-          controller.close();
-          return;
+  const stream = await model.generateContentStream({
+    contents: promptMessages.map((msg) => ({
+      role: msg.author,
+      parts: [{ text: msg.content }],
+    })),
+  });
+
+  // Buffer for final message storage
+  let fullResponse = "";
+  const now = new Date();
+  const streamOut = new ReadableStream({
+    async start(controller) {
+      try {
+        for await (const chunk of stream.stream) {
+          const text = chunk.text();
+          fullResponse += text;
+          controller.enqueue(encoder.encode(text));
         }
-        const word = words[i++];
-        controller.enqueue(encoder.encode(word + " "));
-        setTimeout(pushWord, 40); // simulate delay
-      }
+        controller.close();
 
-      pushWord();
+        // Save to DB (non-blocking)
+        const userMessageData = {
+          role: "user",
+          content: userMessage,
+          createdAt: now,
+        };
+
+        const assistantMessageData = {
+          role: "assistant",
+          content: fullResponse,
+          createdAt: new Date(now.getTime() + 1),
+        };
+
+        (async () => {
+          try {
+            if (!conversationId) {
+              await prisma.chatConversation.create({
+                data: {
+                  userId: user.id,
+                  title: "New Chat",
+                  messages: {
+                    create: [userMessageData, assistantMessageData],
+                  },
+                },
+              });
+            } else {
+              await prisma.chatConversation.update({
+                where: { id: conversationId },
+                data: {
+                  messages: {
+                    create: [userMessageData, assistantMessageData],
+                  },
+                },
+              });
+            }
+          } catch (err) {
+            console.error("❌ Failed to save messages to DB:", err);
+          }
+        })();
+      } catch (err) {
+        console.error("❌ Stream error:", err);
+        controller.error(err);
+      }
     },
   });
 
-  return new Response(stream, {
+  return new Response(streamOut, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-cache",
