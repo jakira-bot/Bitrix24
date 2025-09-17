@@ -24,11 +24,12 @@ cp .env.example .env
 
 To configure Google authentication, set the following environment variables in your `.env` file:
 
-| Variable Name          | Description                                                                                                                       | Required | Default Value |
-| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------- |
-| `GOOGLE_CLIENT_ID`     | Your Google application's Client ID. Obtain this from the [Google Developer Console](https://console.developers.google.com/).     | Yes      | None          |
-| `GOOGLE_CLIENT_SECRET` | Your Google application's Client Secret. Obtain this from the [Google Developer Console](https://console.developers.google.com/). | Yes      | None          |
-| `GOOGLE_AI_API_KEY`       | Your Google Generative Language API key. Obtain this from the Google Cloud Console as described below.                            | Yes      | None          |
+| Variable Name                    | Description                                                                                                                       | Required | Default Value |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------- |
+| `GOOGLE_CLIENT_ID`               | Your Google application's Client ID. Obtain this from the [Google Developer Console](https://console.developers.google.com/).     | Yes      | None          |
+| `GOOGLE_CLIENT_SECRET`           | Your Google application's Client Secret. Obtain this from the [Google Developer Console](https://console.developers.google.com/). | Yes      | None          |
+| `GOOGLE_GENERATIVE_AI_API_KEY`   | Your Google Generative Language API key. Obtain this from the Google Cloud Console as described below.                            | Yes      | None          |
+| ``EXASEARCH_API_KEY`             | Your ExaSearch API key. Obtain this from the [ExaSearch Developer Portal](https://exa.tech/).                                     | Yes      | None          |
 
 
 **Instructions:**
@@ -52,6 +53,12 @@ To configure Google authentication, set the following environment variables in y
 - Click **Create Credentials** → **API Key**.
 - Copy the generated API key.
 
+1c. Obtain Exa Api Key
+
+- Go to https://dashboard.exa.ai/login?action=logout
+- Login with an google account
+- Copy the generated API key.
+
 2. **Set Up Your `.env` File:**
    - Create a `.env` file in the root directory of your project if it doesn't exist.
 
@@ -61,7 +68,8 @@ To configure Google authentication, set the following environment variables in y
     ```env
     GOOGLE_CLIENT_ID=your-google-client-id
     GOOGLE_CLIENT_SECRET=your-google-client-secret
-    GOOGLE_AI_API_KEY=your-google-generative-language-api-key
+    GOOGLE_GENERATIVE_AI_API_KEY=your-google-generative-language-api-key
+    EXASEARCH_API_KEY=your-exasearch-api-key
     ```
   - Save the `.env` file. Ensure this file is **not** committed to version control by adding `.env` to your `.gitignore` file.
 
