@@ -16,7 +16,7 @@
     "seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed.ts"
   },
   "dependencies": {
-    "@ai-sdk/google": "^1.2.13",
+    "@ai-sdk/google": "^2.0.14",
     "@ai-sdk/openai": "^2.0.15",
     "@ai-sdk/provider": "^2.0.0",
     "@ai-sdk/provider-utils": "^3.0.0",
@@ -58,7 +58,7 @@
     "@types/axios": "^0.9.36",
     "@types/pdf-parse": "^1.1.4",
     "@vercel/blob": "^0.26.0",
-    "ai": "^5.0.15",
+    "ai": "^5.0.44",
     "axios": "^1.8.4",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",

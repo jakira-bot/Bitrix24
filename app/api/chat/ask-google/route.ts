@@ -3,8 +3,10 @@ import prisma from "@/lib/prisma";
 import { auth } from "@/auth";
 import { rateLimit } from "@/lib/redis";
 import { databaseQueryTool } from "@/lib/ai/tools/query-prisma";
-import { google } from "@/lib/ai/available-models";
 import { generateText } from "ai";
+import { getGoogleModel } from "@/lib/ai/available-models";
+import type { ChatMessage } from '@prisma/client';
+import type { ModelMessage } from "ai";
 
 export const runtime = "nodejs";
 
@@ -56,30 +58,33 @@ export async function POST(req: NextRequest) {
     if (!conversation) return new Response("Conversation not found", { status: 404 });
     if (conversation.userId !== user.id) return new Response("Forbidden", { status: 403 });
 
-    previousMessages = conversation.messages.map(msg => ({
+    previousMessages = conversation.messages.map((msg: ChatMessage) => ({
       role: msg.role === "user" ? "user" : "assistant",
       content: msg.content,
     }));
   }
 
-  const promptMessages = [
+  const previousMessagesTyped: ModelMessage[] = previousMessages.map(msg => ({
+    role: msg.role,
+    content: msg.content,
+  }));
+
+  const promptMessages: ModelMessage[] = [
     {
       role: "system",
-      content: `You are a helpful assistant that can search for deal information in a database. When users ask about deals, use the databaseQueryTool to find relevant information. Always use the tool when users ask about specific deal criteria like EBITDA, revenue, location, etc. 
-When you find matching deals, always output the details of the deals you found in your reply. If no deals are found, say so explicitly.`,
+      content: `You are a helpful assistant that can search for deal information in a database...`,
     },
-    ...previousMessages,
+    ...previousMessagesTyped,
     { role: "user", content: userMessage },
   ];
 
   try {
     // Use generateText instead of generateObject for better tool handling
     const { text: aiResponse, toolCalls, toolResults } = await generateText({
-      model: google("gemini-1.5-flash"),
-      tools: { databaseQueryTool },
-      messages: promptMessages,
-      maxToolRoundtrips: 3, // Allow multiple tool calls if needed
-    });
+    model: getGoogleModel("gemini-1.5-flash"),
+    tools: { databaseQueryTool },
+    messages: promptMessages,
+  });
 
     // Save to DB (non-blocking)
     const now = new Date();
