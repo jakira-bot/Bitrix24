@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/auth";
 import { rateLimit } from "@/lib/redis";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { databaseQueryTool } from "@/lib/ai/tools/query-prisma";
+import { google } from "@/lib/ai/available-models";
+import { generateText } from "ai";
 
 export const runtime = "nodejs";
 
@@ -42,14 +44,8 @@ export async function POST(req: NextRequest) {
     return new Response("Message is required", { status: 400 });
   }
 
-  const API_KEY = process.env.GOOGLE_AI_API_KEY;
-  if (!API_KEY) {
-    console.error("❌ Missing GOOGLE_AI_API_KEY");
-    return new Response("Missing Google API key", { status: 500 });
-  }
-
   // --- Fetch prior messages from DB
-  let previousMessages: { author: string; content: string }[] = [];
+  let previousMessages: { role: "user" | "assistant"; content: string }[] = [];
 
   if (conversationId) {
     const conversation = await prisma.chatConversation.findUnique({
@@ -61,92 +57,78 @@ export async function POST(req: NextRequest) {
     if (conversation.userId !== user.id) return new Response("Forbidden", { status: 403 });
 
     previousMessages = conversation.messages.map(msg => ({
-      author: msg.role === "user" ? "user" : "assistant",
+      role: msg.role === "user" ? "user" : "assistant",
       content: msg.content,
     }));
   }
 
   const promptMessages = [
+    {
+      role: "system",
+      content: `You are a helpful assistant that can search for deal information in a database. When users ask about deals, use the databaseQueryTool to find relevant information. Always use the tool when users ask about specific deal criteria like EBITDA, revenue, location, etc. 
+When you find matching deals, always output the details of the deals you found in your reply. If no deals are found, say so explicitly.`,
+    },
     ...previousMessages,
-    { author: "user", content: userMessage },
+    { role: "user", content: userMessage },
   ];
 
-  // --- Set up SDK and stream
-  const genAI = new GoogleGenerativeAI(API_KEY);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  try {
+    // Use generateText instead of generateObject for better tool handling
+    const { text: aiResponse, toolCalls, toolResults } = await generateText({
+      model: google("gemini-1.5-flash"),
+      tools: { databaseQueryTool },
+      messages: promptMessages,
+      maxToolRoundtrips: 3, // Allow multiple tool calls if needed
+    });
 
-  const encoder = new TextEncoder();
+    // Save to DB (non-blocking)
+    const now = new Date();
+    const userMessageData = {
+      role: "user",
+      content: userMessage,
+      createdAt: now,
+    };
+    const assistantMessageData = {
+      role: "assistant",
+      content: aiResponse,
+      createdAt: new Date(now.getTime() + 1),
+    };
 
-  const stream = await model.generateContentStream({
-    contents: promptMessages.map((msg) => ({
-      role: msg.author,
-      parts: [{ text: msg.content }],
-    })),
-  });
-
-  // Buffer for final message storage
-  let fullResponse = "";
-  const now = new Date();
-  const streamOut = new ReadableStream({
-    async start(controller) {
+    // Save messages asynchronously
+    (async () => {
       try {
-        for await (const chunk of stream.stream) {
-          const text = chunk.text();
-          fullResponse += text;
-          controller.enqueue(encoder.encode(text));
+        if (!conversationId) {
+          await prisma.chatConversation.create({
+            data: {
+              userId: user.id,
+              title: "New Chat",
+              messages: {
+                create: [userMessageData, assistantMessageData],
+              },
+            },
+          });
+        } else {
+          await prisma.chatConversation.update({
+            where: { id: conversationId },
+            data: {
+              messages: {
+                create: [userMessageData, assistantMessageData],
+              },
+            },
+          });
         }
-        controller.close();
-
-        // Save to DB (non-blocking)
-        const userMessageData = {
-          role: "user",
-          content: userMessage,
-          createdAt: now,
-        };
-
-        const assistantMessageData = {
-          role: "assistant",
-          content: fullResponse,
-          createdAt: new Date(now.getTime() + 1),
-        };
-
-        (async () => {
-          try {
-            if (!conversationId) {
-              await prisma.chatConversation.create({
-                data: {
-                  userId: user.id,
-                  title: "New Chat",
-                  messages: {
-                    create: [userMessageData, assistantMessageData],
-                  },
-                },
-              });
-            } else {
-              await prisma.chatConversation.update({
-                where: { id: conversationId },
-                data: {
-                  messages: {
-                    create: [userMessageData, assistantMessageData],
-                  },
-                },
-              });
-            }
-          } catch (err) {
-            console.error("❌ Failed to save messages to DB:", err);
-          }
-        })();
       } catch (err) {
-        console.error("❌ Stream error:", err);
-        controller.error(err);
+        console.error("❌ Failed to save messages to DB:", err);
       }
-    },
-  });
+    })();
 
-  return new Response(streamOut, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Cache-Control": "no-cache",
-    },
-  });
+    // Return the AI response
+    return new Response(aiResponse, {
+      headers: { "Content-Type": "text/plain; charset=utf-8" },
+    });
+
+  } catch (error) {
+    console.error("❌ AI generation error:", error);
+    return new Response("Internal server error", { status: 500 });
+  }
 }
