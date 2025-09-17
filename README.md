@@ -29,7 +29,7 @@ To configure Google authentication, set the following environment variables in y
 | `GOOGLE_CLIENT_ID`               | Your Google application's Client ID. Obtain this from the [Google Developer Console](https://console.developers.google.com/).     | Yes      | None          |
 | `GOOGLE_CLIENT_SECRET`           | Your Google application's Client Secret. Obtain this from the [Google Developer Console](https://console.developers.google.com/). | Yes      | None          |
 | `GOOGLE_GENERATIVE_AI_API_KEY`   | Your Google Generative Language API key. Obtain this from the Google Cloud Console as described below.                            | Yes      | None          |
-| `EXASEARCH_API_KEY`             | Your ExaSearch API key. Obtain this from the [ExaSearch Developer Portal](https://exa.tech/).                                     | Yes      | None          |
+| `EXASEARCH_API_KEY`             | Your ExaSearch API key. Obtain this from the [ExaSearch Developer Portal](https://dashboard.exa.ai/login).                         | Yes      | None          |
 
 
 **Instructions:**
