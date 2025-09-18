@@ -2,14 +2,18 @@ import { NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { auth } from "@/auth";
 import { rateLimit } from "@/lib/redis";
-import { databaseQueryTool } from "@/lib/ai/tools/query-prisma";
+import { tools } from "@/lib/ai/tools/chatbot-tools";
 import { generateText } from "ai";
 import { getGoogleModel } from "@/lib/ai/available-models";
 import type { ChatMessage } from '@prisma/client';
 import type { ModelMessage } from "ai";
 import { z } from "zod";
+import { HumanInTheLoopUIMessage } from "@/lib/ai/chatbot-hitl/hitl-types"; 
+import { processToolCalls } from "@/lib/ai/chatbot-hitl/hitl-utils";
 
 export const runtime = "nodejs";
+
+const { databaseQueryTool } = tools;
 
 export async function POST(req: NextRequest) {
   const userSession = await auth();

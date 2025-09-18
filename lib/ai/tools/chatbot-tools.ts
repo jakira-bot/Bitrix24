@@ -1,8 +1,8 @@
-import { tool } from "ai";
+import { tool, ToolSet } from "ai";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 
-export const databaseQueryTool = tool({
+const databaseQueryTool = tool({
     description: "Search for deal information in the database. Use this tool when users ask about deals with specific criteria like EBITDA amounts, revenue, location, or other deal characteristics. You can filter by minimum/maximum EBITDA, exact revenue, company location, and EBITDA margin.",
     inputSchema: z.object({
         id: z.string().optional().describe("Specific deal ID to search for"),
@@ -17,6 +17,7 @@ export const databaseQueryTool = tool({
         maxEbitdaMargin: z.number().optional().describe("Maximum EBITDA margin percentage"),
         limit: z.number().optional().default(10).describe("Maximum number of results to return"),
     }),
+    outputSchema: z.string(),
     async execute({ 
         id, 
         title, 
@@ -129,3 +130,7 @@ export const databaseQueryTool = tool({
         }
     },
 });
+
+export const tools = {
+    databaseQueryTool
+} satisfies ToolSet;
