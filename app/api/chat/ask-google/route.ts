@@ -7,6 +7,7 @@ import { generateText } from "ai";
 import { getGoogleModel } from "@/lib/ai/available-models";
 import type { ChatMessage } from '@prisma/client';
 import type { ModelMessage } from "ai";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,11 @@ export async function POST(req: NextRequest) {
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "anon";
 
-  const { ok, remaining, reset } = await rateLimit(`api:chat-post:${ip}`, 10, 60_000);
+  const rateKey = userSession?.user?.email
+  ? `chat:user:${userSession.user.email}`
+  : `chat:ip:${ip}`;
+
+  const { ok, remaining, reset } = await rateLimit(rateKey, 10, 60_000);
 
   if (!ok) {
     return new Response("Too many requests", {
@@ -40,10 +45,23 @@ export async function POST(req: NextRequest) {
     return new Response("User not found", { status: 404 });
   }
 
-  const { conversationId, message: userMessage } = await req.json();
+  const requestSchema = z.object({
+    conversationId: z.string().optional(),
+    message: z.string()
+      .min(1, "Message cannot be empty")
+      .max(2000, "Message too long (max 2000 characters)"),
+  });
+  let conversationId: string | undefined;
+  let userMessage: string;
 
-  if (!userMessage || userMessage.trim() === "") {
-    return new Response("Message is required", { status: 400 });
+  try {
+    const json = await req.json();
+    const parsed = requestSchema.parse(json);
+    conversationId = parsed.conversationId;
+    userMessage = parsed.message;
+  } catch (error) {
+    console.error("❌ Invalid request body:", error);
+    return new Response("Invalid input", { status: 400 });
   }
 
   // --- Fetch prior messages from DB
@@ -72,7 +90,7 @@ export async function POST(req: NextRequest) {
   const promptMessages: ModelMessage[] = [
     {
       role: "system",
-      content: `You are a helpful assistant that can search for deal information in a database...`,
+      content: `You are a helpful assistant that can search for deal information in a database. If a user requests an action other than searching deals, reply that you are not authorized to perform such operations.`,
     },
     ...previousMessagesTyped,
     { role: "user", content: userMessage },
