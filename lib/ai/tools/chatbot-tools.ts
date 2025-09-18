@@ -17,7 +17,12 @@ const databaseQueryTool = tool({
         maxEbitdaMargin: z.number().optional().describe("Maximum EBITDA margin percentage"),
         limit: z.number().optional().default(10).describe("Maximum number of results to return"),
     }),
-    outputSchema: z.string(),
+    outputSchema: z.object({
+        success: z.boolean().describe("Indicates if the query was successful"),
+        message: z.string().describe("Summary message about the query result"),
+        error: z.string().optional().describe("Error message if the query failed"),
+        count: z.number().describe("Number of deals found"),
+    }),
     async execute({ 
         id, 
         title, 
@@ -123,7 +128,7 @@ const databaseQueryTool = tool({
             return {
                 success: false,
                 message: "An error occurred while searching for deals.",
-                error: error instanceof Error ? error.message : "Unknown error",
+                error: error instanceof Error ? error.message : String(error),
                 count: 0,
                 deals: []
             };
