@@ -101,6 +101,8 @@ model Deal {
   rollup      Rollup? @relation("RollupDeals", fields: [rollupId], references: [id])
   chunk_text  String?
   description String?
+
+  apiData     Json?
 }
 
 model DealDocument {
