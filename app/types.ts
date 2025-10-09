@@ -13,7 +13,7 @@ export type TransformedDeal = {
   ebitdaMargin: number;
   industry: string;
   sourceWebsite: string;
-  companyLocation?: string;
+  companyLocation?: string; 
 };
 
 export type ManualDeal = {
@@ -179,4 +179,16 @@ export interface RollupDetailsResponse {
   error?: string;
 };
 
+// Type describing the result of attempting to find deal enrichment info using a singular relevant service function
+export interface EnrichmentProviderResponse {
+  provider: string; // Which ai or api is this result associated with? ie Exa or Crunchbase
+  // fields related to the result
+  resultTitle?: string | null; // title of result
+  rawText?: string | null; // raw llm output
+  summary?: string | null; // llm provided summary
+  url?: string | null; // cited source url
+  author?: string | null; // cited source author
+  publishedDate?: string | null; // ISO string
+  context?: string; // llm ready string, if available
+}  
 
