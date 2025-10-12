@@ -192,3 +192,24 @@ export interface EnrichmentProviderResponse {
   context?: string; // llm ready string, if available
 }  
 
+export type UnifiedKeyInfo = {
+  // chosen consensus value for the key
+  value: string | number;
+  // raw reported values from providers (preserve original types)
+  values: Array<string | number>;
+  // which providers reported this key
+  providers: string[];
+  // how the consensus was derived
+  consensusMethod: "average" | "majority" | "single";
+};
+
+export type UnifiedEnrichmentResponse = {
+  // canonical keys mapped to info
+  unifiedKeys: Record<string, UnifiedKeyInfo>;
+  // short generated summary of the combined view
+  summary?: string;
+  // original responses included in the merge
+  sources: EnrichmentProviderResponse[];
+  generatedAt: string;
+};
+
