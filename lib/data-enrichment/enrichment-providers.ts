@@ -1,4 +1,4 @@
-import { ManualDeal, EnrichmentProviderResponse } from "../../app/types";
+import { ManualDeal, EnrichmentProviderResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo } from "../../app/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { google } from "../ai/available-models";
@@ -94,7 +94,7 @@ async function extractKeyValuesFromResponse(
   resp: EnrichmentProviderResponse,
 ): Promise<Record<string, string | number>> {
   // schema: a record of string -> string|number
-  const schema = z.record(z.union([z.number(), z.string()]));
+  const schema = z.record(z.string(), z.union([z.number(), z.string()]));
 
   try {
     const prompt = `Extract short key-value pairs from the following provider output. Return only a flat JSON object where keys are short identifiers (e.g., ebitda, revenue, askingPrice, industry, location, contact_email) and values are numbers when possible or strings otherwise.
