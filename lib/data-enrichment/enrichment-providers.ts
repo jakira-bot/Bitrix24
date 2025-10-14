@@ -4,11 +4,6 @@ import { z } from "zod";
 import { google } from "../ai/available-models";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const slugify = (s = "") =>
-  s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
 
 /**
  * Mock Exa enrichment provider
