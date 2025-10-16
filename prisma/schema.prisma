@@ -95,12 +95,22 @@ model Deal {
   user         User?          @relation(fields: [userId], references: [id])
   POC          POC[]
   DealDocument DealDocument[]
-  Employee     Employee[]
+  Employee     POC[]?
 
   rollupId    String? // optional
   rollup      Rollup? @relation("RollupDeals", fields: [rollupId], references: [id])
   chunk_text  String?
   description String?
+
+  owner       POC?
+  tags        String[]?
+  CIS         Json?  //Combined Income Statement
+  dataRaw     Json?
+  news        Json? // "Famous news stories / known for"
+  desc        String?
+  yearFounded String?
+  structure   String? //Ownership ie Sole, partnership etc
+  segment     String? //Market Segement, specific customer focus
 }
 
 model DealDocument {
@@ -132,8 +142,12 @@ enum DealDocumentCategory {
 model POC {
   id        String  @id @default(cuid())
   name      String
-  workPhone String?
   email     String
+  title     String?
+  workPhone String?
+  linkedIn  String?
+  resume    Json?
+  tags      String[]?
   Deal      Deal?   @relation(fields: [dealId], references: [id], onDelete: Cascade)
   dealId    String?
 }
