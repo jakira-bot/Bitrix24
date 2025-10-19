@@ -244,6 +244,9 @@ export type UnifiedEnrichmentResponse = {
   yearFounded?: string;
   structure: OwnershipStructure;
   segment: string; // Market Segment, specific customer focus
-
+  // additional arbitrary keys mapped to info
+  unifiedKeys: Record<string, UnifiedKeyInfo>;
+  // sources used in the enrichment
+  sources: EnrichmentProviderResponse[];
 }
 
