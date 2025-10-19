@@ -203,13 +203,47 @@ export type UnifiedKeyInfo = {
   consensusMethod: "average" | "majority" | "single";
 };
 
+// export type UnifiedEnrichmentResponse = {
+//   // canonical keys mapped to info
+//   unifiedKeys: Record<string, UnifiedKeyInfo>;
+//   // short generated summary of the combined view
+//   summary?: string;
+//   // original responses included in the merge
+//   sources: EnrichmentProviderResponse[];
+//   generatedAt: string;
+// };
+
+export interface EnrichmentPOC {
+  id: string;
+  name: string;
+  workPhone?: string;
+  email: string;
+  title?: string;
+  linkedIn?: string;
+  resume?: string; // string of resume if parseable
+  tags?: string[];
+}
+
+enum OwnershipStructure {
+  SoleProprietorship = "Sole Proprietorship",
+  Partnership = "Partnership",
+  LLC = "LLC",
+  LLP = "LLP",
+  CorporationC = "C Corporation",
+  CorporationS = "S Corporation",
+  Cooperative = "Cooperative",
+  JointVenture = "Joint Venture",
+}
+
 export type UnifiedEnrichmentResponse = {
-  // canonical keys mapped to info
-  unifiedKeys: Record<string, UnifiedKeyInfo>;
-  // short generated summary of the combined view
-  summary?: string;
-  // original responses included in the merge
-  sources: EnrichmentProviderResponse[];
-  generatedAt: string;
-};
+  // "essential" information that we should always expect
+  employees?: EnrichmentPOC[];
+  owner?: EnrichmentPOC;
+  news?: string[]; // String array of relevant news article summaries
+  desc?: string;
+  yearFounded?: string;
+  structure: OwnershipStructure;
+  segment: string; // Market Segment, specific customer focus
+
+}
 
