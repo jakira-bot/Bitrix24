@@ -1,4 +1,5 @@
 import { Timestamp } from "firebase/firestore";
+import { z } from "zod";
 
 export type TransformedDeal = {
   brokerage: string;
@@ -179,18 +180,18 @@ export interface RollupDetailsResponse {
   error?: string;
 };
 
-// Type describing the result of attempting to find deal enrichment info using a singular relevant service function
-export interface EnrichmentProviderResponse {
-  provider: string; // Which ai or api is this result associated with? ie Exa or Crunchbase
-  // fields related to the result
-  resultTitle?: string | null; // title of result
-  rawText?: string | null; // raw llm output
-  summary?: string | null; // llm provided summary
-  url?: string | null; // cited source url
-  author?: string | null; // cited source author
-  publishedDate?: string | null; // ISO string
-  context?: string; // llm ready string, if available
-}  
+// // Type describing the result of attempting to find deal enrichment info using a singular relevant service function
+// export interface OLDEnrichmentProviderResponse {
+//   provider: string; // Which ai or api is this result associated with? ie Exa or Crunchbase
+//   // fields related to the result
+//   resultTitle?: string | null; // title of result
+//   rawText?: string | null; // raw llm output
+//   summary?: string | null; // llm provided summary
+//   url?: string | null; // cited source url
+//   author?: string | null; // cited source author
+//   publishedDate?: string | null; // ISO string
+//   context?: string; // llm ready string, if available
+// }  
 
 export type UnifiedKeyInfo = {
   // chosen consensus value for the key
@@ -203,7 +204,7 @@ export type UnifiedKeyInfo = {
   consensusMethod: "average" | "majority" | "single";
 };
 
-// export type UnifiedEnrichmentResponse = {
+// export type OLDUnifiedEnrichmentResponse = {
 //   // canonical keys mapped to info
 //   unifiedKeys: Record<string, UnifiedKeyInfo>;
 //   // short generated summary of the combined view
@@ -235,18 +236,63 @@ enum OwnershipStructure {
   JointVenture = "Joint Venture",
 }
 
+// Individual enrichment response schema
+export const IndividualEnrichmentResponseSchema = z.object({
+  provider: z.string(),
+  resultTitle: z.string().nullable(),
+  summary: z.string().nullable(),
+  url: z.string().nullable(),
+  author: z.string().nullable(),
+  publishedDate: z.string().nullable(),
+  context: z.string().nullable(),
+  // Expected PE fields
+  employees: z.array(z.any()).optional(),
+  owner: z.any().optional(),
+  news: z.array(z.string()).optional(),
+  desc: z.string().optional(),
+  yearFounded: z.string().optional(),
+  structure: z.any().optional(),
+  segment: z.string().optional(),
+  // Arbitrary additional info
+  extra: z.record(z.string(), z.any()).optional(),
+});
+
 export type UnifiedEnrichmentResponse = {
-  // "essential" information that we should always expect
+  // "essential" information that we should always expect (consensus/merged)
   employees?: EnrichmentPOC[];
   owner?: EnrichmentPOC;
-  news?: string[]; // String array of relevant news article summaries
+  news?: string[];
   desc?: string;
   yearFounded?: string;
-  structure: OwnershipStructure;
-  segment: string; // Market Segment, specific customer focus
-  // additional arbitrary keys mapped to info
+  structure?: OwnershipStructure;
+  segment?: string;
+  // additional arbitrary keys mapped to info (consensus/merged)
   unifiedKeys: Record<string, UnifiedKeyInfo>;
-  // sources used in the enrichment
-  sources: EnrichmentProviderResponse[];
-}
+  // short generated summary of the combined view
+  summary?: string;
+  // original individual responses included in the merge
+  sources: IndividualEnrichmentResponse[];
+  // timestamp for when the unified response was generated
+  generatedAt: string;
+};
+
+export type IndividualEnrichmentResponse = {
+  provider: string;
+  resultTitle?: string | null;
+  summary?: string | null;
+  url?: string | null;
+  author?: string | null;
+  publishedDate?: string | null;
+  context?: string | null;
+  // Expected PE fields
+  employees?: EnrichmentPOC[];
+  owner?: EnrichmentPOC;
+  news?: string[];
+  desc?: string;
+  yearFounded?: string;
+  structure?: OwnershipStructure;
+  segment?: string;
+  // Arbitrary additional info
+  extra?: Record<string, any>;
+};
 

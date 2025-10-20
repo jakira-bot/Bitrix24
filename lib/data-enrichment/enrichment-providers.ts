@@ -1,131 +1,82 @@
-import { ManualDeal, EnrichmentProviderResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo } from "../../app/types";
+import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema } from "../../app/types";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { google } from "../ai/available-models";
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+import { google, openai, perplexity } from "../ai/available-models";
 
 /**
- * Mock Exa enrichment provider
+ * Selects the appropriate model for the enrichment provider.
  */
-export async function mockExaEnricher(): Promise<EnrichmentProviderResponse> {
-  await sleep(120 + Math.floor(Math.random() * 200));
-  return {
-    provider: "ExaMock",
-    resultTitle: "Exa Analysis — Mock Data",
-    rawText: "Revenue: $1,200,000. EBITDA: $300,000. Margin: 25%. Industry: Technology. Location: San Francisco, CA.",
-    summary: "Exa identifies this as a Technology deal with a 25% EBITDA margin. Recommended next step: validate financials.",
-    url: "https://exa.mock/results/12345",
-    author: "Exa Research Bot",
-    publishedDate: new Date().toISOString(),
-    context: "Mock context for Exa enrichment provider.",
-  };
-}
-
-/**
- * Mock Perplexity enrichment provider
- */
-export async function mockPerplexityEnricher(): Promise<EnrichmentProviderResponse> {
-  await sleep(80 + Math.floor(Math.random() * 220));
-  return {
-    provider: "PerplexityMock",
-    resultTitle: "Perplexity Summary — Mock Data",
-    rawText: "Estimated revenue: $1,250,000. EBITDA: $310,000. Industry: Technology. Contact: John Doe. Location: San Francisco.",
-    summary: "Perplexity suggests this is a Technology deal with $1.25M revenue and $310K EBITDA. Follow-up: confirm contact details.",
-    url: "https://perplexity.mock/search?q=mock-data",
-    author: "Perplexity Mock Agent",
-    publishedDate: new Date().toISOString(),
-    context: "Mock context for Perplexity enrichment provider.",
-  };
-}
-
-/**
- * Mock Crunchbase enrichment provider
- */
-export async function mockCrunchbaseEnricher(): Promise<EnrichmentProviderResponse> {
-  await sleep(140 + Math.floor(Math.random() * 260));
-  return {
-    provider: "CrunchbaseMock",
-    resultTitle: "Crunchbase Profile — Mock Data",
-    rawText: "Company: MockTech. Revenue: $1,300,000. EBITDA: $320,000. Industry: Technology. Location: San Francisco, CA.",
-    summary: "Crunchbase mock profile for MockTech, a Technology company with $1.3M revenue and $320K EBITDA.",
-    url: "https://www.crunchbase.com/organization/mocktech",
-    author: "Crunchbase Mock Scraper",
-    publishedDate: new Date().toISOString(),
-    context: "Mock context for Crunchbase enrichment provider.",
-  };
-}
-
-/**
- * Attempt to extract structured key/value pairs from a provider response using the AI SDK.
- * Returns an object mapping keys to (string | number).
- */
-async function extractKeyValuesFromResponse(
-  resp: EnrichmentProviderResponse,
-): Promise<Record<string, string | number>> {
-  // schema: a record of string -> string|number
-  const schema = z.record(z.string(), z.union([z.number(), z.string()]));
-
-  try {
-    const prompt = `Extract short key-value pairs from the following provider output. Return only a flat JSON object where keys are short identifiers (e.g., ebitda, revenue, askingPrice, industry, location, contact_email) and values are numbers when possible or strings otherwise.
-
-Provider title: ${resp.resultTitle}
-Provider summary: ${resp.summary}
-Provider rawText: ${resp.rawText}
-
-If a numeric value is present (currency, percent, plain number) return it as a number. If ambiguous, return as string.`;
-
-    const { object } = await generateObject({
-      model: google("gemini-pro"),
-      prompt,
-      schema,
-    });
-
-    return (object ?? {}) as Record<string, string | number>;
-  } catch (e) {
-    // fallback: very small heuristic parser for common finance keys
-    const text = `${resp.summary}\n${resp.rawText}`.toLowerCase();
-    const out: Record<string, string | number> = {};
-
-    const findNumberAfter = (keyword: string) => {
-      const re = new RegExp(`${keyword}[:\\s]*\\$?([0-9,]+(?:\\.\\d+)?)`);
-      const m = text.match(re);
-      if (m && m[1]) return Number(m[1].replace(/,/g, ""));
-      return undefined;
-    };
-
-    const revenue = findNumberAfter("revenue");
-    if (revenue !== undefined) out.revenue = revenue;
-
-    const ebitda = findNumberAfter("ebitda");
-    if (ebitda !== undefined) out.ebitda = ebitda;
-
-    const asking = findNumberAfter("asking") || findNumberAfter("asking price");
-    if (asking !== undefined) out.askingPrice = asking;
-
-    // strings
-    const industryMatch = text.match(/industry[:\s]*([a-zA-Z0-9 &\-]+)/);
-    if (industryMatch && industryMatch[1]) out.industry = industryMatch[1].trim();
-
-    return out;
+function getModel(provider: "google" | "openai" | "perplexity") {
+  switch (provider) {
+    case "google":
+      return google("gemini-pro");
+    case "openai":
+      return openai("gpt-4o");
+    case "perplexity":
+      return perplexity("sonar-pro");
+    default:
+      throw new Error("Unknown provider");
   }
 }
 
 /**
- * Merge multiple EnrichmentProviderResponse objects into a unified response with consensus values.
+ * Main enrichment function for any provider.
+ * Accepts provider name and raw text, returns structured enrichment response.
+ */
+export async function enrichDealWithProvider(
+  provider: "google" | "openai" | "perplexity",
+  rawText: string,
+): Promise<IndividualEnrichmentResponse> {
+  const prompt = `Extract private equity deal information from the following text. 
+Return a JSON object matching this schema:
+- provider: string
+- resultTitle: string or null
+- summary: string or null
+- url: string or null
+- author: string or null
+- publishedDate: string or null
+- context: string or null
+- employees: array or null
+- owner: object or null
+- news: array of strings or null
+- desc: string or null
+- yearFounded: string or null
+- structure: object or null
+- segment: string or null
+- extra: object mapping string keys to any additional info
+
+If a field is missing, set it to null or omit.`;
+
+  const { object } = await generateObject({
+    model: getModel(provider),
+    prompt: `${prompt}\n\nRaw provider output:\n${rawText}`,
+    schema: IndividualEnrichmentResponseSchema,
+  });
+
+  return object as IndividualEnrichmentResponse;
+}
+
+/**
+ * Merge multiple IndividualEnrichmentResponse objects into a unified response with consensus values.
  */
 export async function unifyEnrichmentResponses(
-  responses: EnrichmentProviderResponse[],
+  responses: IndividualEnrichmentResponse[],
 ): Promise<UnifiedEnrichmentResponse> {
-  // extract per-provider key/value maps (use AI SDK where possible)
+  // Collect all keys from 'extra' and expected fields
   const extractedList: Array<Record<string, string | number>> = [];
   for (const resp of responses) {
-    try {
-      const kv = await extractKeyValuesFromResponse(resp);
-      extractedList.push(kv);
-    } catch (e) {
-      extractedList.push({});
+    const kv: Record<string, string | number> = {};
+    // Add expected fields if present
+    if (resp.segment) kv.segment = resp.segment;
+    if (resp.yearFounded) kv.yearFounded = resp.yearFounded;
+    if (resp.desc) kv.desc = resp.desc;
+    // Add arbitrary extra fields
+    if (resp.extra) {
+      Object.entries(resp.extra).forEach(([k, v]) => {
+        kv[k] = v;
+      });
     }
+    extractedList.push(kv);
   }
 
   // collect all keys (normalize to lowercase keys for matching)
@@ -226,7 +177,23 @@ Also include which keys had disagreements (if any).`;
     summary = undefined;
   }
 
+  // Helper to get first non-null value for a field
+  function firstNonNull<T>(getter: (resp: IndividualEnrichmentResponse) => T | undefined): T | undefined {
+    for (const resp of responses) {
+      const val = getter(resp);
+      if (val !== undefined && val !== null) return val;
+    }
+    return undefined;
+  }
+
   return {
+    employees: firstNonNull(r => r.employees),
+    owner: firstNonNull(r => r.owner),
+    news: firstNonNull(r => r.news),
+    desc: firstNonNull(r => r.desc),
+    yearFounded: firstNonNull(r => r.yearFounded),
+    structure: firstNonNull(r => r.structure),
+    segment: firstNonNull(r => r.segment),
     unifiedKeys,
     summary,
     sources: responses,
