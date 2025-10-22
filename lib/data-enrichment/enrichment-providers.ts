@@ -1,7 +1,7 @@
-import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema } from "../../app/types";
+import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema, EnrichmentPOC, OwnershipStructure } from "../../app/types";
 import { generateObject } from "ai";
 import { z } from "zod";
-import { google, openai, perplexity } from "../ai/available-models";
+import { google, openai, exa, perplexity } from "../ai/available-models";
 
 /**
  * Selects the appropriate model for the enrichment provider.
@@ -20,14 +20,206 @@ function getModel(provider: "google" | "openai" | "perplexity") {
 }
 
 /**
+ * Enrichment function using Exa search with native structured output.
+ * Uses searchAndContents with summary schema to get structured data directly from Exa.
+ */
+export async function enrichDealWithExa(
+  companyName: string,
+  additionalContext?: string
+): Promise<IndividualEnrichmentResponse> {
+  try {
+    // Construct search query for private equity deal information
+    const searchQuery = additionalContext 
+      ? `${companyName} ${additionalContext} private equity investment funding`
+      : `${companyName} private equity investment funding company information`;
+
+    // Define the schema for Exa's structured summary
+    const enrichmentSchema = {
+      "title": "Private Equity Deal Information",
+      "type": "object",
+      "properties": {
+        "resultTitle": {
+          "type": ["string", "null"],
+          "description": "Title or name of the company/deal"
+        },
+        "summary": {
+          "type": ["string", "null"],
+          "description": "Brief summary of the company and deal"
+        },
+        "context": {
+          "type": ["string", "null"],
+          "description": "Additional context about the deal or company"
+        },
+        "employees": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "workPhone": { "type": "string" },
+              "email": { "type": "string" },
+              "title": { "type": "string" },
+              "linkedIn": { "type": "string" },
+              "resume": { "type": "string" },
+              "tags": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            },
+            "required": ["id", "name", "email"]
+          },
+          "description": "Array of employee/contact information"
+        },
+        "owner": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "workPhone": { "type": "string" },
+            "email": { "type": "string" },
+            "title": { "type": "string" },
+            "linkedIn": { "type": "string" },
+            "resume": { "type": "string" },
+            "tags": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "required": ["id", "name", "email"],
+          "description": "Owner/primary contact information"
+        },
+        "news": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Recent news items about the company"
+        },
+        "desc": {
+          "type": "string",
+          "description": "Company description"
+        },
+        "yearFounded": {
+          "type": "string",
+          "description": "Year the company was founded"
+        },
+        "structure": {
+          "type": "string",
+          "enum": [
+            "Sole Proprietorship",
+            "Partnership",
+            "LLC",
+            "LLP",
+            "C Corporation",
+            "S Corporation",
+            "Cooperative",
+            "Joint Venture"
+          ],
+          "description": "Organizational or corporate structure"
+        },
+        "segment": {
+          "type": "string",
+          "description": "Business segment or industry"
+        },
+        "extra": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "Additional relevant information as key-value pairs"
+        }
+      }
+    };
+
+    // Perform Exa search with structured summary
+    const searchResults = await exa.searchAndContents(searchQuery, {
+      type: "auto",
+      numResults: 3,
+      category: "company",
+      useAutoprompt: true,
+      summary: {
+        schema: enrichmentSchema
+      }
+    });
+
+    // Get the first result's structured summary
+    const firstResult = searchResults.results[0];
+    
+    if (!firstResult || !firstResult.summary) {
+      throw new Error("No results or summary returned from Exa");
+    }
+
+    // Parse the structured summary (Exa returns it as a JSON string)
+    const structuredData = JSON.parse(firstResult.summary) as {
+      resultTitle?: string | null;
+      summary?: string | null;
+      context?: string | null;
+      employees?: EnrichmentPOC[];
+      owner?: EnrichmentPOC;
+      news?: string[];
+      desc?: string;
+      yearFounded?: string;
+      structure?: OwnershipStructure;
+      segment?: string;
+      extra?: Record<string, any>;
+    };
+
+    // Combine with metadata from the search result
+    const response: IndividualEnrichmentResponse = {
+      provider: "exa",
+      resultTitle: structuredData.resultTitle ?? firstResult.title ?? null,
+      summary: structuredData.summary ?? null,
+      url: firstResult.url,
+      author: firstResult.author ?? null,
+      publishedDate: firstResult.publishedDate ?? null,
+      context: structuredData.context ?? null,
+      employees: structuredData.employees,
+      owner: structuredData.owner,
+      news: structuredData.news,
+      desc: structuredData.desc,
+      yearFounded: structuredData.yearFounded,
+      structure: structuredData.structure,
+      segment: structuredData.segment,
+      extra: structuredData.extra
+    };
+
+    return response;
+
+  } catch (error) {
+    console.error("Error enriching deal with Exa:", error);
+    
+    // Return empty response on error matching the type exactly
+    const errorResponse: IndividualEnrichmentResponse = {
+      provider: "exa",
+      resultTitle: null,
+      summary: null,
+      url: null,
+      author: null,
+      publishedDate: null,
+      context: null,
+      employees: undefined,
+      owner: undefined,
+      news: undefined,
+      desc: undefined,
+      yearFounded: undefined,
+      structure: undefined,
+      segment: undefined,
+      extra: { error: error instanceof Error ? error.message : String(error) }
+    };
+    
+    return errorResponse;
+  }
+}
+
+/**
  * Main enrichment function for any provider.
  * Accepts provider name and raw text, returns structured enrichment response.
  */
 export async function enrichDealWithProvider(
-  provider: "google" | "openai" | "perplexity",
+  provider: "google" | "openai" | "perplexity" | "exa",
   rawText: string,
 ): Promise<IndividualEnrichmentResponse> {
-  const prompt = `Extract private equity deal information from the following text. 
+  if (provider === "exa") {
+    return enrichDealWithExa(rawTextOrCompanyName, additionalContext);
+  }
+  const prompt = `Extract private equity deal information using up to date information from the web. 
 Return a JSON object matching this schema:
 - provider: string
 - resultTitle: string or null

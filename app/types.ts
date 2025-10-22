@@ -225,7 +225,7 @@ export interface EnrichmentPOC {
   tags?: string[];
 }
 
-enum OwnershipStructure {
+export enum OwnershipStructure {
   SoleProprietorship = "Sole Proprietorship",
   Partnership = "Partnership",
   LLC = "LLC",
