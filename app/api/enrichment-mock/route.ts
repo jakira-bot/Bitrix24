@@ -4,7 +4,7 @@ import {
   mockPerplexityEnricher,
   mockCrunchbaseEnricher,
   unifyEnrichmentResponses,
-} from "@/lib/data-enrichment/enrichment-providers";
+} from "@/lib/data-enrichment/general-enrichment";
 
 export async function GET() {
   try {
