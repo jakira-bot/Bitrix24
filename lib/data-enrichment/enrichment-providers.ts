@@ -1,4 +1,4 @@
-import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema, EnrichmentPOC, OwnershipStructure } from "../../app/types";
+import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema, EnrichmentPOC, OwnershipStructure, ManualDeal } from "../../app/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { google, openai, exa, perplexity } from "../ai/available-models";
@@ -20,35 +20,68 @@ function getModel(provider: "google" | "openai" | "perplexity") {
 }
 
 /**
+ * Constructs a search query from a ManualDeal object
+ */
+function constructSearchQuery(deal: ManualDeal): string {
+  const parts: string[] = [deal.brokerage];
+  
+  if (deal.deal_caption) {
+    parts.push(deal.deal_caption);
+  }
+  
+  if (deal.industry) {
+    parts.push(deal.industry);
+  }
+  
+  if (deal.company_location) {
+    parts.push(deal.company_location);
+  }
+  
+  parts.push("company information");
+  
+  return parts.join(" ");
+}
+
+/**
+ * Constructs a detailed context string from a ManualDeal object for search context
+ */
+function constructSearchContext(deal: ManualDeal): string {
+  const parts: string[] = [];
+  
+  if (deal.brokerage) parts.push(deal.brokerage);
+  if (deal.deal_caption) parts.push(deal.deal_caption);
+  if (deal.industry) parts.push(deal.industry);
+  if (deal.company_location) parts.push(deal.company_location);
+  
+  return parts.join(" ");
+}
+
+/**
  * Enrichment function using Exa search with native structured output.
  * Uses searchAndContents with summary schema to get structured data directly from Exa.
  */
 export async function enrichDealWithExa(
-  companyName: string,
-  additionalContext?: string
+  deal: ManualDeal
 ): Promise<IndividualEnrichmentResponse> {
   try {
-    // Construct search query for private equity deal information
-    const searchQuery = additionalContext 
-      ? `${companyName} ${additionalContext} private equity investment funding`
-      : `${companyName} private equity investment funding company information`;
+    const searchQuery = constructSearchQuery(deal);
 
     // Define the schema for Exa's structured summary
     const enrichmentSchema = {
-      "title": "Private Equity Deal Information",
+      "title": "Company Enrichment Information",
       "type": "object",
       "properties": {
         "resultTitle": {
           "type": ["string", "null"],
-          "description": "Title or name of the company/deal"
+          "description": "Official company name or title found"
         },
         "summary": {
           "type": ["string", "null"],
-          "description": "Brief summary of the company and deal"
+          "description": "Brief summary of the company from search results"
         },
         "context": {
           "type": ["string", "null"],
-          "description": "Additional context about the deal or company"
+          "description": "Additional context about the company found in search results"
         },
         "employees": {
           "type": "array",
@@ -69,7 +102,7 @@ export async function enrichDealWithExa(
             },
             "required": ["id", "name", "email"]
           },
-          "description": "Array of employee/contact information"
+          "description": "Employee/contact information found in search results"
         },
         "owner": {
           "type": "object",
@@ -87,20 +120,20 @@ export async function enrichDealWithExa(
             }
           },
           "required": ["id", "name", "email"],
-          "description": "Owner/primary contact information"
+          "description": "Owner/founder information found in search results"
         },
         "news": {
           "type": "array",
           "items": { "type": "string" },
-          "description": "Recent news items about the company"
+          "description": "Recent news about the company found in search results"
         },
         "desc": {
           "type": "string",
-          "description": "Company description"
+          "description": "Detailed company description found in search results"
         },
         "yearFounded": {
           "type": "string",
-          "description": "Year the company was founded"
+          "description": "Year the company was founded, found in search results"
         },
         "structure": {
           "type": "string",
@@ -114,16 +147,16 @@ export async function enrichDealWithExa(
             "Cooperative",
             "Joint Venture"
           ],
-          "description": "Organizational or corporate structure"
+          "description": "Corporate structure found in search results"
         },
         "segment": {
           "type": "string",
-          "description": "Business segment or industry"
+          "description": "Business segment or detailed industry classification found in search results"
         },
         "extra": {
           "type": "object",
           "additionalProperties": true,
-          "description": "Additional relevant information as key-value pairs"
+          "description": "Any additional relevant information found in search results as key-value pairs"
         }
       }
     };
@@ -131,7 +164,7 @@ export async function enrichDealWithExa(
     // Perform Exa search with structured summary
     const searchResults = await exa.searchAndContents(searchQuery, {
       type: "auto",
-      numResults: 3,
+      numResults: 1,
       category: "company",
       useAutoprompt: true,
       summary: {
@@ -161,7 +194,7 @@ export async function enrichDealWithExa(
       extra?: Record<string, any>;
     };
 
-    // Combine with metadata from the search result
+    // Return only the enriched data from Exa, not the original deal data
     const response: IndividualEnrichmentResponse = {
       provider: "exa",
       resultTitle: structuredData.resultTitle ?? firstResult.title ?? null,
@@ -185,7 +218,7 @@ export async function enrichDealWithExa(
   } catch (error) {
     console.error("Error enriching deal with Exa:", error);
     
-    // Return empty response on error matching the type exactly
+    // Return empty response on error - no deal data included
     const errorResponse: IndividualEnrichmentResponse = {
       provider: "exa",
       resultTitle: null,
@@ -209,39 +242,87 @@ export async function enrichDealWithExa(
 }
 
 /**
+ * Enrichment function using Perplexity with a ManualDeal object.
+ * Queries Perplexity API and structures the response.
+ */
+export async function enrichDealWithPerplexity(
+  deal: ManualDeal
+): Promise<IndividualEnrichmentResponse> {
+  const searchContext = constructSearchContext(deal);
+  
+  const prompt = `Research and provide detailed information about the following company:
+
+Company/Business: ${searchContext}
+
+Please provide ONLY information you find from your research, not the information I provided. Include:
+1. Official company name and detailed description
+2. Key employees and their contact information (if publicly available)
+3. Owner/founder information with contact details
+4. Recent news about the company
+5. Year founded
+6. Corporate structure type
+7. Detailed business segment/industry classification
+8. Any other relevant information you find
+
+Return ONLY new information discovered from your search, not the details I provided above.`;
+
+  // Perplexity will return raw text that we then structure
+  const { object } = await generateObject({
+    model: getModel("perplexity"),
+    prompt,
+    schema: IndividualEnrichmentResponseSchema,
+  });
+
+  return {
+    ...object,
+    provider: "perplexity"
+  } as IndividualEnrichmentResponse;
+}
+
+/**
  * Main enrichment function for any provider.
- * Accepts provider name and raw text, returns structured enrichment response.
+ * Accepts provider name and ManualDeal object, returns structured enrichment response.
  */
 export async function enrichDealWithProvider(
   provider: "google" | "openai" | "perplexity" | "exa",
-  rawText: string,
+  deal: ManualDeal,
 ): Promise<IndividualEnrichmentResponse> {
   if (provider === "exa") {
-    return enrichDealWithExa(rawTextOrCompanyName, additionalContext);
+    return enrichDealWithExa(deal);
   }
-  const prompt = `Extract private equity deal information using up to date information from the web. 
-Return a JSON object matching this schema:
-- provider: string
-- resultTitle: string or null
-- summary: string or null
-- url: string or null
-- author: string or null
-- publishedDate: string or null
-- context: string or null
-- employees: array or null
-- owner: object or null
-- news: array of strings or null
-- desc: string or null
-- yearFounded: string or null
-- structure: object or null
-- segment: string or null
-- extra: object mapping string keys to any additional info
+  
+  if (provider === "perplexity") {
+    return enrichDealWithPerplexity(deal);
+  }
+  
+  const searchContext = constructSearchContext(deal);
+  
+  const prompt = `Research and enrich information about the following company/business:
 
-If a field is missing, set it to null or omit.`;
+${searchContext}
+
+Extract and return ONLY NEW information you discover, not the information provided above. Return a JSON object with:
+- provider: string
+- resultTitle: official company name found
+- summary: brief summary from your research
+- url: relevant company website or source
+- author: author of source material if applicable
+- publishedDate: date of source material if applicable
+- context: additional context discovered
+- employees: array of employee/contact information found
+- owner: owner/founder information found
+- news: array of recent news items found
+- desc: detailed company description found
+- yearFounded: year founded if discovered
+- structure: corporate structure type if found
+- segment: detailed business segment/industry found
+- extra: any other relevant information discovered
+
+If a field cannot be found through research, set it to null.`;
 
   const { object } = await generateObject({
     model: getModel(provider),
-    prompt: `${prompt}\n\nRaw provider output:\n${rawText}`,
+    prompt,
     schema: IndividualEnrichmentResponseSchema,
   });
 
@@ -265,7 +346,9 @@ export async function unifyEnrichmentResponses(
     // Add arbitrary extra fields
     if (resp.extra) {
       Object.entries(resp.extra).forEach(([k, v]) => {
-        kv[k] = v;
+        if (typeof v === 'string' || typeof v === 'number') {
+          kv[k] = v;
+        }
       });
     }
     extractedList.push(kv);
