@@ -36,20 +36,20 @@ export async function enrichDealWithExa(
 
     // Define the schema for Exa's structured summary
     const enrichmentSchema = {
-      "title": "Company Enrichment Information",
-      "type": "object",
-      "properties": {
-        "resultTitle": {
-          "type": ["string", "null"],
-          "description": "Official company name or title found"
+      title: "Company Enrichment Information",
+      type: "object",
+      properties: {
+        resultTitle: {
+          type: "string",
+          description: "Official company name or title found"
         },
-        "summary": {
-          "type": ["string", "null"],
-          "description": "Brief summary of the company from search results"
+        summary: {
+          type: "string",
+          description: "Brief summary of the company from search results"
         },
-        "context": {
-          "type": ["string", "null"],
-          "description": "Additional context about the company found in search results"
+        context: {
+          type: "string",
+          description: "Additional context about the company found in search results"
         },
         "employees": {
           "type": "array",
