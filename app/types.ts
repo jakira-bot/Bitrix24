@@ -296,3 +296,9 @@ export type IndividualEnrichmentResponse = {
   extra?: Record<string, any>;
 };
 
+export enum AvailableProviders {
+  Google = "google",
+  OpenAI = "openai",
+  Perplexity = "perplexity",
+  Exa = "exa",
+}

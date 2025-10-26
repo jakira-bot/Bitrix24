@@ -1,4 +1,4 @@
-import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema, EnrichmentPOC, OwnershipStructure, ManualDeal } from "../../app/types";
+import { IndividualEnrichmentResponse, UnifiedEnrichmentResponse, UnifiedKeyInfo, IndividualEnrichmentResponseSchema, EnrichmentPOC, OwnershipStructure, ManualDeal, AvailableProviders } from "../../app/types";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { enrichDealWithExa } from "./exa-enrichment";
@@ -41,14 +41,14 @@ export function constructSearchContext(deal: ManualDeal): string {
  * Accepts provider name and ManualDeal object, returns structured enrichment response.
  */
 export async function enrichDealWithProvider(
-  provider: "google" | "openai" | "perplexity" | "exa",
+  provider: AvailableProviders,
   deal: ManualDeal,
 ): Promise<IndividualEnrichmentResponse> {
-  if (provider === "exa") {
+  if (provider === AvailableProviders.Exa) {
     return enrichDealWithExa(deal);
   }
-  
-  if (provider === "perplexity") {
+
+  if (provider === AvailableProviders.Perplexity) {
     return enrichDealWithPerplexity(deal);
   }
   
