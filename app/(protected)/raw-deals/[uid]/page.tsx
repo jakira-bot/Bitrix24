@@ -44,6 +44,7 @@ import { formatNumberWithCommas } from "@/lib/utils";
 import { auth } from "@/auth";
 import { redirect } from "next/navigation";
 import { DealSpecificationsDialog } from "@/components/Dialogs/DealSpecificationsDialog";
+import DealEnrichmentSection from "@/components/DealEnrichmentSection";
 
 type Params = Promise<{ uid: string }>;
 
@@ -367,6 +368,9 @@ export default async function ManualDealSpecificPage(props: {
             </div>
           </CardContent>
         </Card>
+
+        {/* Deal Enrichment Section */}
+        <DealEnrichmentSection dealId={uid} />
 
         <Card className="">
           <CardHeader className="flex flex-row items-center justify-between">
