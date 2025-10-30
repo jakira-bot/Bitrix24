@@ -13,7 +13,7 @@ function constructFirecrawlPrompt(deal: ManualDeal): string {
   return prompt;
 }
 
-export async function crawlUrl(deal: ManualDeal, url: string) {
+export async function scrapeUrl(deal: ManualDeal, url: string) {
   const firecrawl = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
 
   const result = await firecrawl.scrape(url, {
@@ -24,5 +24,23 @@ export async function crawlUrl(deal: ManualDeal, url: string) {
     }]
   });
 
-  return result.data.json;
+  return result.json;
+}
+
+export async function crawlUrl(deal: ManualDeal, url: string, limit = 10) {
+  const firecrawl = new Firecrawl({ apiKey: process.env.FIRECRAWL_API_KEY });
+
+  const crawlResponse = await firecrawl.crawl(url, {
+    limit,
+    scrapeOptions: {
+      formats: [{
+        type: "json",
+        schema: IndividualEnrichmentResponseSchema,
+        prompt: constructFirecrawlPrompt(deal)
+      }]
+    }
+  });
+
+  // Returns array of enriched data from all crawled pages
+  return crawlResponse.data.map(page => page.json);
 }
